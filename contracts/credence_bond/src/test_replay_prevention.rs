@@ -18,7 +18,7 @@ fn setup(
     let admin = soroban_sdk::Address::generate(e);
     client.initialize(&admin);
     let attester = soroban_sdk::Address::generate(e);
-    client.register_attester(&attester);
+    client.register_attester(&admin, &attester);
     (client, attester, contract_id)
 }
 

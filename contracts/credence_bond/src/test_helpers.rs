@@ -10,9 +10,9 @@ use soroban_sdk::{Address, Env};
 /// collateral increase; call this after `create_bond` / `top_up` / `increase_bond` when a test
 /// needs an immediate slash in the following ledger.
 pub fn advance_ledger_sequence(e: &Env) {
-    let mut info = e.ledger().get();
-    info.sequence_number = info.sequence_number.saturating_add(1);
-    e.ledger().set(info);
+    e.ledger().with_mut(|info| {
+        info.sequence_number = info.sequence_number.saturating_add(1);
+    });
 }
 
 /// Default mint amount for tests (covers tier thresholds and most scenarios).

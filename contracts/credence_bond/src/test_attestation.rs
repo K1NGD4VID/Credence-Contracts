@@ -13,16 +13,16 @@ use crate::*;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Env, String};
 
-// Helper: register contract + admin + one attester, return (client, attester, contract_id).
-fn setup_with_contract(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
+// Helper: register contract + admin + one attester, return (client, attester, contract_id, admin).
+fn setup_with_contract(e: &Env) -> (CredenceBondClient<'_>, Address, Address, Address) {
     e.mock_all_auths();
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
     client.initialize(&admin);
     let attester = Address::generate(e);
-    client.register_attester(&attester);
-    (client, attester, contract_id)
+    client.register_attester(&admin, &attester);
+    (client, attester, contract_id, admin)
 }
 
 // Convenience: add_attestation with a far-future deadline and the current nonce.
@@ -72,7 +72,7 @@ fn test_register_attester() {
     let admin = Address::generate(&e);
     client.initialize(&admin);
     let attester = Address::generate(&e);
-    client.register_attester(&attester);
+    client.register_attester(&admin, &attester);
     assert!(client.is_attester(&attester));
 }
 
@@ -87,9 +87,9 @@ fn test_register_multiple_attesters() {
     let att1 = Address::generate(&e);
     let att2 = Address::generate(&e);
     let att3 = Address::generate(&e);
-    client.register_attester(&att1);
-    client.register_attester(&att2);
-    client.register_attester(&att3);
+    client.register_attester(&admin, &att1);
+    client.register_attester(&admin, &att2);
+    client.register_attester(&admin, &att3);
     assert!(client.is_attester(&att1));
     assert!(client.is_attester(&att2));
     assert!(client.is_attester(&att3));
@@ -104,9 +104,9 @@ fn test_unregister_attester() {
     let admin = Address::generate(&e);
     client.initialize(&admin);
     let attester = Address::generate(&e);
-    client.register_attester(&attester);
+    client.register_attester(&admin, &attester);
     assert!(client.is_attester(&attester));
-    client.unregister_attester(&attester);
+    client.unregister_attester(&admin, &attester);
     assert!(!client.is_attester(&attester));
 }
 
@@ -129,7 +129,7 @@ fn test_is_attester_false_for_unregistered() {
 #[test]
 fn test_add_attestation_basic() {
     let e = Env::default();
-    let (client, attester, contract_id) = setup_with_contract(&e);
+    let (client, attester, contract_id, _admin) = setup_with_contract(&e);
     let subject = Address::generate(&e);
     let data = String::from_str(&e, "verified identity");
     let att = add(
@@ -150,7 +150,7 @@ fn test_add_attestation_basic() {
 #[test]
 fn test_add_multiple_attestations() {
     let e = Env::default();
-    let (client, attester, contract_id) = setup_with_contract(&e);
+    let (client, attester, contract_id, _admin) = setup_with_contract(&e);
     let subject = Address::generate(&e);
     let att1 = add(&client, &e, &contract_id, &attester, &subject, "att1");
     let att2 = add(&client, &e, &contract_id, &attester, &subject, "att2");
@@ -170,8 +170,8 @@ fn test_add_attestation_different_attesters() {
     client.initialize(&admin);
     let att1 = Address::generate(&e);
     let att2 = Address::generate(&e);
-    client.register_attester(&att1);
-    client.register_attester(&att2);
+    client.register_attester(&admin, &att1);
+    client.register_attester(&admin, &att2);
     let subject = Address::generate(&e);
     let attestation1 = add(&client, &e, &contract_id, &att1, &subject, "verified");
     let attestation2 = add(&client, &e, &contract_id, &att2, &subject, "verified");
@@ -183,7 +183,7 @@ fn test_add_attestation_different_attesters() {
 #[test]
 fn test_add_attestation_different_subjects() {
     let e = Env::default();
-    let (client, attester, contract_id) = setup_with_contract(&e);
+    let (client, attester, contract_id, _admin) = setup_with_contract(&e);
     let sub1 = Address::generate(&e);
     let sub2 = Address::generate(&e);
     let att1 = add(&client, &e, &contract_id, &attester, &sub1, "verified");
@@ -195,7 +195,7 @@ fn test_add_attestation_different_subjects() {
 #[test]
 fn test_add_attestation_empty_data() {
     let e = Env::default();
-    let (client, attester, contract_id) = setup_with_contract(&e);
+    let (client, attester, contract_id, _admin) = setup_with_contract(&e);
     let subject = Address::generate(&e);
     let att = add(&client, &e, &contract_id, &attester, &subject, "");
     assert_eq!(att.attestation_data, String::from_str(&e, ""));
@@ -230,10 +230,10 @@ fn test_unauthorized_attester_rejected() {
 #[should_panic(expected = "not verifier")]
 fn test_unregistered_attester_cannot_attest() {
     let e = Env::default();
-    let (client, attester, contract_id) = setup_with_contract(&e);
+    let (client, attester, contract_id, _admin) = setup_with_contract(&e);
     let subject = Address::generate(&e);
     add(&client, &e, &contract_id, &attester, &subject, "ok");
-    client.unregister_attester(&attester);
+    client.unregister_attester(&_admin, &attester);
     add(
         &client,
         &e,
@@ -251,7 +251,7 @@ fn test_unregistered_attester_cannot_attest() {
 #[test]
 fn test_revoke_attestation() {
     let e = Env::default();
-    let (client, attester, contract_id) = setup_with_contract(&e);
+    let (client, attester, contract_id, _admin) = setup_with_contract(&e);
     let subject = Address::generate(&e);
     let att = add(&client, &e, &contract_id, &attester, &subject, "to revoke");
     assert!(!att.revoked);
@@ -271,8 +271,8 @@ fn test_revoke_wrong_attester() {
     client.initialize(&admin);
     let att1 = Address::generate(&e);
     let att2 = Address::generate(&e);
-    client.register_attester(&att1);
-    client.register_attester(&att2);
+    client.register_attester(&admin, &att1);
+    client.register_attester(&admin, &att2);
     let subject = Address::generate(&e);
     let att = add(&client, &e, &contract_id, &att1, &subject, "test");
     revoke(&client, &e, &contract_id, &att2, &att.id);
@@ -282,7 +282,7 @@ fn test_revoke_wrong_attester() {
 #[should_panic(expected = "attestation already revoked")]
 fn test_revoke_twice() {
     let e = Env::default();
-    let (client, attester, contract_id) = setup_with_contract(&e);
+    let (client, attester, contract_id, _admin) = setup_with_contract(&e);
     let subject = Address::generate(&e);
     let att = add(&client, &e, &contract_id, &attester, &subject, "test");
     revoke(&client, &e, &contract_id, &attester, &att.id);
@@ -293,7 +293,7 @@ fn test_revoke_twice() {
 #[should_panic(expected = "attestation not found")]
 fn test_revoke_nonexistent() {
     let e = Env::default();
-    let (client, attester, contract_id) = setup_with_contract(&e);
+    let (client, attester, contract_id, _admin) = setup_with_contract(&e);
     revoke(&client, &e, &contract_id, &attester, &999);
 }
 
@@ -305,7 +305,7 @@ fn test_revoke_nonexistent() {
 #[should_panic(expected = "duplicate attestation")]
 fn test_duplicate_attestation_rejected() {
     let e = Env::default();
-    let (client, attester, contract_id) = setup_with_contract(&e);
+    let (client, attester, contract_id, _admin) = setup_with_contract(&e);
     let subject = Address::generate(&e);
     add(&client, &e, &contract_id, &attester, &subject, "duplicate");
     add(&client, &e, &contract_id, &attester, &subject, "duplicate");
@@ -314,7 +314,7 @@ fn test_duplicate_attestation_rejected() {
 #[test]
 fn test_same_attester_different_data_gets_unique_id() {
     let e = Env::default();
-    let (client, attester, contract_id) = setup_with_contract(&e);
+    let (client, attester, contract_id, _admin) = setup_with_contract(&e);
     let subject = Address::generate(&e);
     let att1 = add(&client, &e, &contract_id, &attester, &subject, "data1");
     let att2 = add(&client, &e, &contract_id, &attester, &subject, "data2");
@@ -324,7 +324,7 @@ fn test_same_attester_different_data_gets_unique_id() {
 #[test]
 fn test_same_attester_multiple_for_subject() {
     let e = Env::default();
-    let (client, attester, contract_id) = setup_with_contract(&e);
+    let (client, attester, contract_id, _admin) = setup_with_contract(&e);
     let subject = Address::generate(&e);
     add(&client, &e, &contract_id, &attester, &subject, "1");
     add(&client, &e, &contract_id, &attester, &subject, "2");
@@ -340,7 +340,7 @@ fn test_same_attester_multiple_for_subject() {
 #[test]
 fn test_events_published() {
     let e = Env::default();
-    let (client, attester, contract_id) = setup_with_contract(&e);
+    let (client, attester, contract_id, _admin) = setup_with_contract(&e);
     let subject = Address::generate(&e);
     let att = add(&client, &e, &contract_id, &attester, &subject, "test");
     revoke(&client, &e, &contract_id, &attester, &att.id);
@@ -355,7 +355,7 @@ fn test_events_published() {
 #[test]
 fn test_get_attestation() {
     let e = Env::default();
-    let (client, attester, contract_id) = setup_with_contract(&e);
+    let (client, attester, contract_id, _admin) = setup_with_contract(&e);
     let subject = Address::generate(&e);
     let original = add(&client, &e, &contract_id, &attester, &subject, "get test");
     let retrieved = client.get_attestation(&original.id);
@@ -378,7 +378,7 @@ fn test_get_nonexistent_attestation() {
 #[test]
 fn test_get_subject_attestations() {
     let e = Env::default();
-    let (client, attester, contract_id) = setup_with_contract(&e);
+    let (client, attester, contract_id, _admin) = setup_with_contract(&e);
     let subject = Address::generate(&e);
     add(&client, &e, &contract_id, &attester, &subject, "1");
     add(&client, &e, &contract_id, &attester, &subject, "2");
@@ -409,7 +409,7 @@ fn test_get_subject_attestations_different_subjects() {
     let admin = Address::generate(&e);
     client.initialize(&admin);
     let att = Address::generate(&e);
-    client.register_attester(&att);
+    client.register_attester(&admin, &att);
     let sub1 = Address::generate(&e);
     let sub2 = Address::generate(&e);
     add(&client, &e, &contract_id, &att, &sub1, "s1_1");
@@ -428,7 +428,7 @@ fn test_get_subject_attestations_different_subjects() {
 #[test]
 fn test_self_attestation() {
     let e = Env::default();
-    let (client, address, contract_id) = setup_with_contract(&e);
+    let (client, address, contract_id, _admin) = setup_with_contract(&e);
     let att = add(&client, &e, &contract_id, &address, &address, "self");
     assert_eq!(att.attester, att.subject);
 }
@@ -436,7 +436,7 @@ fn test_self_attestation() {
 #[test]
 fn test_timestamp_set() {
     let e = Env::default();
-    let (client, attester, contract_id) = setup_with_contract(&e);
+    let (client, attester, contract_id, _admin) = setup_with_contract(&e);
     let subject = Address::generate(&e);
     let att = add(&client, &e, &contract_id, &attester, &subject, "test");
     assert_eq!(att.timestamp, e.ledger().timestamp());
@@ -445,7 +445,7 @@ fn test_timestamp_set() {
 #[test]
 fn test_revoke_preserves_data() {
     let e = Env::default();
-    let (client, attester, contract_id) = setup_with_contract(&e);
+    let (client, attester, contract_id, _admin) = setup_with_contract(&e);
     let subject = Address::generate(&e);
     let original = add(&client, &e, &contract_id, &attester, &subject, "preserved");
     revoke(&client, &e, &contract_id, &attester, &original.id);
@@ -467,9 +467,9 @@ fn test_complex_scenario() {
     let att1 = Address::generate(&e);
     let att2 = Address::generate(&e);
     let att3 = Address::generate(&e);
-    client.register_attester(&att1);
-    client.register_attester(&att2);
-    client.register_attester(&att3);
+    client.register_attester(&admin, &att1);
+    client.register_attester(&admin, &att2);
+    client.register_attester(&admin, &att3);
     let sub1 = Address::generate(&e);
     let sub2 = Address::generate(&e);
     let a1 = add(&client, &e, &contract_id, &att1, &sub1, "a1s1_1");

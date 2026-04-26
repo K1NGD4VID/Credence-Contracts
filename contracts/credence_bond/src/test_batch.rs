@@ -504,7 +504,10 @@ fn test_atomic_failure_on_second_bond() {
 
     // Verify NO bonds were created (atomic failure)
     // The bond storage should be empty since validation failed before creation
-    assert!(!env.storage().instance().has(&crate::DataKey::Bond));
+    let has_bond = env.as_contract(&contract_id, || {
+        env.storage().instance().has(&crate::DataKey::Bond)
+    });
+    assert!(!has_bond);
 }
 
 #[test]
@@ -799,7 +802,10 @@ fn test_all_bonds_validated_before_any_created() {
     assert!(result.is_err());
 
     // Verify no bonds were created
-    assert!(!env.storage().instance().has(&crate::DataKey::Bond));
+    let has_bond = env.as_contract(&contract_id, || {
+        env.storage().instance().has(&crate::DataKey::Bond)
+    });
+    assert!(!has_bond);
 }
 
 #[test]

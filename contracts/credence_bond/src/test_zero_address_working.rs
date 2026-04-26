@@ -55,7 +55,7 @@ mod zero_address_tests {
                 true,
             );
 
-            CredenceBond::register_attester(env.clone(), attester.clone());
+            CredenceBond::register_attester(env.clone(), admin.clone(), attester.clone());
 
             CredenceBond::register_verifier(
                 env.clone(),

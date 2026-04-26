@@ -23,7 +23,7 @@ fn setup(e: &Env) -> (CredenceBondClient<'_>, Address, Address, Address) {
     let admin = Address::generate(e);
     client.initialize(&admin);
     let attester = Address::generate(e);
-    client.register_attester(&attester);
+    client.register_attester(&admin, &attester);
     (client, admin, attester, contract_id)
 }
 

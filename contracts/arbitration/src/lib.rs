@@ -179,7 +179,7 @@ impl CredenceArbitration {
             return Err(ArbitrationError::NotAuthorized);
         }
 
-        let from = dispute.status.clone();
+        let from = dispute.status;
         require_transition(from, DisputeStatus::Cancelled)?;
 
         dispute.status = DisputeStatus::Cancelled;
@@ -272,7 +272,7 @@ impl CredenceArbitration {
             .ok_or(ArbitrationError::DisputeNotFound)?;
 
         // Must be Voting to start resolution
-        require_transition(dispute.status.clone(), DisputeStatus::Resolving)?;
+        require_transition(dispute.status, DisputeStatus::Resolving)?;
 
         let now = e.ledger().timestamp();
         if now <= dispute.voting_end {

@@ -7,11 +7,11 @@
 use crate::BondTier;
 use soroban_sdk::Env;
 
-/// Tier thresholds (in smallest unit, e.g. 6 decimals for USDC).
+/// Tier thresholds (normalized to 18 decimals).
 /// Bronze: [0, BRONZE_MAX), Silver: [BRONZE_MAX, SILVER_MAX), Gold: [SILVER_MAX, GOLD_MAX), Platinum: [GOLD_MAX, ..)
-pub const TIER_BRONZE_MAX: i128 = 1_000_000_000; // 1000 * 10^6
-pub const TIER_SILVER_MAX: i128 = 5_000_000_000; // 5000 * 10^6
-pub const TIER_GOLD_MAX: i128 = 20_000_000_000; // 20000 * 10^6
+pub const TIER_BRONZE_MAX: i128 = 1_000_000_000_000_000_000_000; // 1000 * 10^18
+pub const TIER_SILVER_MAX: i128 = 5_000_000_000_000_000_000_000; // 5000 * 10^18
+pub const TIER_GOLD_MAX: i128 = 20_000_000_000_000_000_000_000; // 20000 * 10^18
 
 /// Returns the tier for a given bonded amount.
 #[must_use]

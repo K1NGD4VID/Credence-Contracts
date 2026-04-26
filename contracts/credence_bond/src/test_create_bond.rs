@@ -6,13 +6,7 @@ use soroban_sdk::Env;
 #[test]
 fn test_create_bond_success() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     let amount = 1000_i128;
     let duration = 86400_u64;
 
@@ -27,46 +21,27 @@ fn test_create_bond_success() {
 
 /// Test bond creation with zero amount (should succeed as no validation exists)
 #[test]
+#[should_panic(expected = "bond amount below minimum required")]
 fn test_create_bond_zero_amount() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
-    let bond = client.create_bond(&identity, &0_i128, &86400_u64);
-
-    assert_eq!(bond.bonded_amount, 0);
-    assert!(bond.active);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
+    client.create_bond(&identity, &0_i128, &86400_u64);
 }
 
 /// Test bond creation with negative amount (should succeed as no validation exists)
 #[test]
+#[should_panic(expected = "bond amount cannot be negative")]
 fn test_create_bond_negative_amount() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
-    let bond = client.create_bond(&identity, &(-100_i128), &86400_u64);
-
-    assert_eq!(bond.bonded_amount, -100);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
+    client.create_bond(&identity, &(-100_i128), &86400_u64);
 }
 
 // Tests for supply cap functionality
 #[test]
 fn test_set_supply_cap_success() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
+    let (client, admin, _identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
 
     let cap = 10000_i128;
     client.set_supply_cap(&admin, &cap);
@@ -78,11 +53,7 @@ fn test_set_supply_cap_success() {
 #[should_panic(expected = "supply cap must be non-negative")]
 fn test_set_supply_cap_negative() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
+    let (client, admin, _identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
 
     client.set_supply_cap(&admin, &-1000_i128);
 }
@@ -90,13 +61,7 @@ fn test_set_supply_cap_negative() {
 #[test]
 fn test_supply_cap_enforcement_below_cap() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     let cap = 10000_i128;
     client.set_supply_cap(&admin, &cap);
 
@@ -110,13 +75,7 @@ fn test_supply_cap_enforcement_below_cap() {
 #[should_panic(expected = "supply cap exceeded")]
 fn test_supply_cap_enforcement_above_cap() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     let cap = 10000_i128;
     client.set_supply_cap(&admin, &cap);
 
@@ -127,13 +86,7 @@ fn test_supply_cap_enforcement_above_cap() {
 #[test]
 fn test_supply_cap_with_multiple_bonds() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     let cap = 10000_i128;
     client.set_supply_cap(&admin, &cap);
 
@@ -149,13 +102,7 @@ fn test_supply_cap_with_multiple_bonds() {
 #[test]
 fn test_supply_cap_no_cap() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     // Don't set cap (defaults to 0 = no cap)
 
     // Create bond without cap - should succeed
@@ -167,13 +114,7 @@ fn test_supply_cap_no_cap() {
 #[test]
 fn test_supply_cap_withdrawal_reduces_supply() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     let cap = 10000_i128;
     client.set_supply_cap(&admin, &cap);
 
@@ -195,13 +136,7 @@ fn test_supply_cap_withdrawal_reduces_supply() {
 #[test]
 fn test_create_bond_max_amount() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     let max_amount = i128::MAX;
     let bond = client.create_bond(&identity, &max_amount, &86400_u64);
 
@@ -212,13 +147,7 @@ fn test_create_bond_max_amount() {
 #[test]
 fn test_create_bond_zero_duration() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     let bond = client.create_bond(&identity, &1000_i128, &0_u64);
 
     assert_eq!(bond.bond_duration, 0);
@@ -229,13 +158,7 @@ fn test_create_bond_zero_duration() {
 #[test]
 fn test_create_bond_max_duration() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     let duration = u64::MAX / 2; // Safe duration that won't overflow with typical timestamps
     let bond = client.create_bond(&identity, &1000_i128, &duration);
 
@@ -253,6 +176,7 @@ fn test_create_bond_duration_overflow() {
 
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
+    e.mock_all_auths();
 
     let admin = Address::generate(&e);
     client.initialize(&admin);
@@ -266,13 +190,7 @@ fn test_create_bond_duration_overflow() {
 #[test]
 fn test_create_bond_duplicate() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
 
     // Create first bond
     let bond1 = client.create_bond(&identity, &1000_i128, &86400_u64);
@@ -292,11 +210,7 @@ fn test_create_bond_duplicate() {
 #[test]
 fn test_create_bond_different_identities() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
+    let (client, admin, _identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
 
     let identity1 = Address::generate(&e);
     let identity2 = Address::generate(&e);
@@ -314,13 +228,7 @@ fn test_create_bond_different_identities() {
 #[test]
 fn test_create_bond_field_initialization() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     let bond = client.create_bond(&identity, &5000_i128, &604800_u64);
 
     assert_eq!(bond.identity, identity);
@@ -334,13 +242,7 @@ fn test_create_bond_field_initialization() {
 #[test]
 fn test_create_bond_storage_persistence() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     let amount = 3000_i128;
     let duration = 259200_u64;
 
@@ -356,13 +258,7 @@ fn test_create_bond_storage_persistence() {
 #[test]
 fn test_create_bond_min_positive_amount() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     let bond = client.create_bond(&identity, &1_i128, &86400_u64);
 
     assert_eq!(bond.bonded_amount, 1);
@@ -373,13 +269,7 @@ fn test_create_bond_min_positive_amount() {
 #[test]
 fn test_create_bond_usdc_amount() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     let usdc_amount = 1000_000000_i128; // 1000 USDC with 6 decimals
     let bond = client.create_bond(&identity, &usdc_amount, &86400_u64);
 
@@ -390,13 +280,7 @@ fn test_create_bond_usdc_amount() {
 #[test]
 fn test_create_bond_timestamp() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     let bond = client.create_bond(&identity, &1000_i128, &86400_u64);
 
     // bond_start should be set to ledger timestamp (can be 0 in test env)
@@ -408,13 +292,7 @@ fn test_create_bond_timestamp() {
 #[test]
 fn test_create_bond_sequential() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
 
     for i in 1..=5 {
         let amount = i * 1000;

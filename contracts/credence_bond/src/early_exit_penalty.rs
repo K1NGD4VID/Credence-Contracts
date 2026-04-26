@@ -53,18 +53,17 @@ pub fn calculate_penalty(
     if total_duration == 0 || penalty_bps == 0 {
         return 0;
     }
-    let base = math::bps(
+    let num = math::mul_i128(
         amount,
-        penalty_bps,
+        (penalty_bps as i128)
+            .checked_mul(remaining_time as i128)
+            .expect("penalty mul overflow"),
         "early exit penalty overflow",
-        "early exit penalty div-by-zero",
     );
-    let scaled = math::mul_i128(base, remaining_time as i128, "early exit penalty overflow");
-    math::div_i128(
-        scaled,
-        total_duration as i128,
-        "early exit penalty div-by-zero",
-    )
+    let den = (math::BPS_DENOMINATOR as i128)
+        .checked_mul(total_duration as i128)
+        .expect("penalty den overflow");
+    math::div_i128(num, den, "early exit penalty div-by-zero")
 }
 
 /// Emit early exit penalty event.

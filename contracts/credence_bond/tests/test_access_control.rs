@@ -50,7 +50,7 @@ fn authorized_attester_can_add_attestation() {
     let env = Env::default();
     let (client, _admin, user, attacker) = setup(&env);
 
-    client.register_attester(&attacker);
+    client.register_attester(&_admin, &attacker);
 
     let valid = String::from_str(&env, "valid");
     // get the actual contract_id from the client
@@ -68,7 +68,7 @@ fn wrong_attester_cannot_revoke() {
     let env = Env::default();
     let (client, _admin, user, attacker) = setup(&env);
 
-    client.register_attester(&attacker);
+    client.register_attester(&_admin, &attacker);
 
     let valid = String::from_str(&env, "valid");
     let contract_id = client.address.clone();

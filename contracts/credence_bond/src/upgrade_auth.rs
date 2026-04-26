@@ -163,7 +163,7 @@ pub fn initialize_upgrade_auth(e: &Env, admin: &Address) {
         .instance()
         .has(&DataKey::Upgrade(UpgradeKey::Admin))
     {
-        panic!("upgrade authorization already initialized");
+        panic!("already initialized");
     }
 
     // Set upgrade admin
@@ -192,6 +192,11 @@ pub fn initialize_upgrade_auth(e: &Env, admin: &Address) {
         &DataKey::Upgrade(UpgradeKey::AuthorizedUpgraders),
         &upgraders,
     );
+
+    // Initialize implementation tracking
+    e.storage()
+        .instance()
+        .set(&DataKey::Upgrade(UpgradeKey::Implementation), &e.current_contract_address());
 
     // Initialize proposal ID counter
     e.storage()
@@ -230,12 +235,11 @@ pub fn grant_upgrade_auth(
     admin.require_auth();
     require_upgrade_admin(e, admin);
 
-    // Check if address is already authorized
-    if e.storage()
-        .instance()
-        .has(&DataKey::Upgrade(UpgradeKey::Auth(address.clone())))
-    {
-        panic!("address already authorized");
+    // Check if address is already authorized and active
+    if let Some(auth) = e.storage().instance().get::<_, UpgradeAuthorization>(&DataKey::Upgrade(UpgradeKey::Auth(address.clone()))) {
+        if auth.active {
+            panic!("address already authorized");
+        }
     }
 
     // Prevent self-assignment of equal or higher role
@@ -476,7 +480,11 @@ pub fn propose_upgrade(
         new_implementation: new_implementation.clone(),
         upgrade_data,
         created_at: e.ledger().timestamp(),
-        status: UpgradeStatus::Pending,
+        status: if required_approvals == 0 {
+            UpgradeStatus::Approved
+        } else {
+            UpgradeStatus::Pending
+        },
         approvals: Vec::new(e),
         required_approvals,
     };

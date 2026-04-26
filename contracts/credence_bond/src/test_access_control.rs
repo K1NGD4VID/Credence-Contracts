@@ -335,6 +335,7 @@ fn setup_main_contract(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
     let admin = Address::generate(e);
     let unauthorized = Address::generate(e);
 
+    e.mock_all_auths();
     client.initialize(&admin);
     (client, admin, unauthorized)
 }
@@ -449,10 +450,10 @@ fn test_emergency_withdraw_unauthorized_governance() {
 #[should_panic(expected = "InvalidAction")]
 fn test_register_attester_unauthorized() {
     let e = Env::default();
-    let (client, _, _unauthorized) = setup_main_contract(&e);
+    let (client, _, unauthorized) = setup_main_contract(&e);
     let attester = Address::generate(&e);
 
-    client.register_attester(&attester);
+    client.register_attester(&unauthorized, &attester);
 }
 
 // Test unauthorized access to unregister_attester
@@ -460,10 +461,10 @@ fn test_register_attester_unauthorized() {
 #[should_panic(expected = "InvalidAction")]
 fn test_unregister_attester_unauthorized() {
     let e = Env::default();
-    let (client, _, _unauthorized) = setup_main_contract(&e);
+    let (client, _, unauthorized) = setup_main_contract(&e);
     let attester = Address::generate(&e);
 
-    client.unregister_attester(&attester);
+    client.unregister_attester(&unauthorized, &attester);
 }
 
 // Test unauthorized access to set_verifier_stake_requirement
@@ -760,6 +761,7 @@ fn test_set_pause_threshold_unauthorized() {
 
 // Test unauthorized access to initialize_upgrade_auth
 #[test]
+#[should_panic(expected = "already initialized")]
 fn test_initialize_upgrade_auth_unauthorized() {
     let e = Env::default();
     let (client, _, unauthorized) = setup_main_contract(&e);

@@ -202,10 +202,10 @@ impl CredenceBond {
     }
 
     pub fn initialize(e: Env, admin: Address) {
-        // Idempotent initializer: if already initialized, do nothing.
         if e.storage().instance().has(&DataKey::Admin) {
-            return;
+            panic!("already initialized");
         }
+        pausable::require_not_paused(&e);
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.storage().instance().set(&DataKey::Paused, &false);
         e.storage()
@@ -296,11 +296,10 @@ impl CredenceBond {
         admin.require_auth();
         Self::require_admin_internal(&e, &admin);
 
-        if cap < 0 {
-            panic!("supply cap must be non-negative");
-        }
+        let token = token_integration::get_token(&e);
+        let normalized_cap = crate::normalization::normalize(&e, &token, cap);
 
-        e.storage().instance().set(&DataKey::SupplyCap, &cap);
+        e.storage().instance().set(&DataKey::SupplyCap, &normalized_cap);
         e.events()
             .publish((Symbol::new(&e, "supply_cap_updated"),), (admin, cap));
     }
@@ -519,19 +518,10 @@ impl CredenceBond {
         upgrade_auth::is_authorized_upgrader(&e, &address)
     }
     /// Register an authorized attester (only admin can call).
-    pub fn register_attester(e: Env, attester: Address) {
+    pub fn register_attester(e: Env, admin: Address, attester: Address) {
         pausable::require_not_paused(&e);
-
-        // Zero-address check
-
-        let admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic!("not initialized"));
         Self::require_admin_internal(&e, &admin);
         admin.require_auth();
-        Self::require_admin_internal(&e, &admin);
         add_verifier_role(&e, &admin, &attester);
         e.storage()
             .instance()
@@ -542,17 +532,14 @@ impl CredenceBond {
     }
 
     /// Remove an attester's authorization (only admin can call).
-    pub fn unregister_attester(e: Env, attester: Address) {
+    pub fn unregister_attester(e: Env, admin: Address, attester: Address) {
         pausable::require_not_paused(&e);
-        let admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic!("not initialized"));
         Self::require_admin_internal(&e, &admin);
         admin.require_auth();
-        Self::require_admin_internal(&e, &admin);
         remove_verifier_role(&e, &admin, &attester);
+        e.storage()
+            .instance()
+            .remove(&DataKey::Attester(attester.clone()));
         verifier::deactivate_if_exists(&e, &attester, Symbol::new(&e, "admin"));
         e.events()
             .publish((Symbol::new(&e, "attester_unregistered"),), attester);
@@ -641,11 +628,6 @@ impl CredenceBond {
     }
 
     pub fn create_bond(e: Env, identity: Address, amount: i128, duration: u64) -> IdentityBond {
-        pausable::require_not_paused(&e);
-        parameters::require_not_borrow_frozen(&e);
-        validation::validate_bond_amount(amount);
-        validation::validate_bond_duration(duration);
-        leverage::validate_leverage(amount, parameters::get_max_leverage(&e));
         Self::create_bond_with_rolling(e, identity, amount, duration, false, 0)
     }
 
@@ -657,48 +639,52 @@ impl CredenceBond {
         is_rolling: bool,
         notice_period_duration: u64,
     ) -> IdentityBond {
-        validation::validate_bond_amount(amount);
+        pausable::require_not_paused(&e);
+        parameters::require_not_borrow_frozen(&e);
+
+        let token = token_integration::get_token(&e);
+        let normalized_amount = crate::normalization::normalize(&e, &token, amount);
+
+        validation::validate_bond_amount(normalized_amount);
         if e.storage()
             .instance()
             .has(&parameters::ParameterKey::MaxLeverage)
         {
-            leverage::validate_leverage(amount, parameters::get_max_leverage(&e));
+            leverage::validate_leverage(normalized_amount, parameters::get_max_leverage(&e));
         }
-        // Validate duration early so callers that expect validation errors do not
-        // require token configuration (token may be unset in unit tests).
         validation::validate_bond_duration(duration);
-
-        pausable::require_not_paused(&e);
-        parameters::require_not_borrow_frozen(&e);
         identity.require_auth();
         token_integration::transfer_into_contract(&e, &identity, amount);
         let bond_start = e.ledger().timestamp();
         let _end = bond_start.checked_add(duration).expect("bond end overflow");
-        let (fee, net_amount) = fees::calculate_fee(&e, amount);
+        let (fee_normalized, net_amount_normalized) = fees::calculate_fee(&e, normalized_amount);
 
         // Enforce supply cap - check after calculating net_amount
-        let supply_cap = Self::get_supply_cap(e.clone());
-        if supply_cap > 0 {
+        let supply_cap_normalized = Self::get_supply_cap(e.clone());
+        if supply_cap_normalized > 0 {
             let current_total_supply = Self::get_total_supply(e.clone());
             let new_total_supply = current_total_supply
-                .checked_add(net_amount)
+                .checked_add(net_amount_normalized)
                 .expect("total supply overflow");
-            if new_total_supply > supply_cap {
+            if new_total_supply > supply_cap_normalized {
                 panic!("supply cap exceeded");
             }
         }
 
-        if fee > 0 {
+        if fee_normalized > 0 {
             let (treasury_opt, _) = fees::get_config(&e);
             if let Some(treasury) = treasury_opt {
-                fees::record_fee(&e, &identity, amount, fee, &treasury);
+                // Record fee in native units for clarity in events?
+                // Actually, let's keep it consistent. If storage is normalized, fees are normalized.
+                // But record_fee emits an event.
+                fees::record_fee(&e, &identity, normalized_amount, fee_normalized, &treasury);
             }
         }
 
         // Update total supply after successful bond creation
         let current_total_supply = Self::get_total_supply(e.clone());
         let new_total_supply = current_total_supply
-            .checked_add(net_amount)
+            .checked_add(net_amount_normalized)
             .expect("total supply overflow");
         e.storage()
             .instance()
@@ -706,7 +692,7 @@ impl CredenceBond {
 
         let bond = IdentityBond {
             identity: identity.clone(),
-            bonded_amount: net_amount,
+            bonded_amount: net_amount_normalized,
             bond_start,
             bond_duration: duration,
             slashed_amount: 0,
@@ -720,7 +706,7 @@ impl CredenceBond {
         same_ledger_liquidation_guard::record_collateral_increase(&e);
 
         let old_tier = BondTier::Bronze;
-        let new_tier = tiered_bond::get_tier_for_amount(net_amount);
+        let new_tier = tiered_bond::get_tier_for_amount(net_amount_normalized);
         tiered_bond::emit_tier_change_if_needed(&e, &identity, old_tier, new_tier);
 
         // Emit both old and new events for backward compatibility during migration
@@ -1141,16 +1127,22 @@ impl CredenceBond {
             Self::release_lock(&e);
             panic!("lock-up period not elapsed; use withdraw_early");
         }
+        let token = token_integration::get_token(&e);
+        let amount_normalized = crate::normalization::normalize(&e, &token, amount);
+
         let available = bond
             .bonded_amount
             .checked_sub(bond.slashed_amount)
             .expect("slashed exceeds bonded");
-        if amount > available {
+        if amount_normalized > available {
             Self::release_lock(&e);
             panic!("insufficient balance for withdrawal");
         }
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
-        bond.bonded_amount = bond.bonded_amount.checked_sub(amount).expect("underflow");
+        bond.bonded_amount = bond
+            .bonded_amount
+            .checked_sub(amount_normalized)
+            .expect("underflow");
         if bond.bonded_amount == 0 {
             bond.active = false;
         }
@@ -1164,7 +1156,7 @@ impl CredenceBond {
         // Update total supply after withdrawal
         let current_total_supply = Self::get_total_supply(e.clone());
         let new_total_supply = current_total_supply
-            .checked_sub(amount)
+            .checked_sub(amount_normalized)
             .expect("total supply underflow");
         e.storage()
             .instance()
@@ -1197,10 +1189,6 @@ impl CredenceBond {
             e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
         }
 
-        // Token transfer is the final external call after all state is settled.
-        token_integration::transfer_from_contract(&e, &bond.identity, amount);
-
-        Self::release_lock(&e);
         bond
     }
 
@@ -1224,26 +1212,39 @@ impl CredenceBond {
             Self::release_lock(&e);
             panic!("use withdraw for post lock-up");
         }
+        let token = token_integration::get_token(&e);
+        let amount_normalized = crate::normalization::normalize(&e, &token, amount);
+
         let available = bond
             .bonded_amount
             .checked_sub(bond.slashed_amount)
             .expect("slashed exceeds bonded");
-        if amount > available {
+        if amount_normalized > available {
             Self::release_lock(&e);
             panic!("insufficient balance for withdrawal");
         }
         let (treasury, penalty_bps) = early_exit_penalty::get_config(&e);
         let remaining = end.saturating_sub(now);
-        let penalty = early_exit_penalty::calculate_penalty(
+        let penalty_native = early_exit_penalty::calculate_penalty(
             amount,
             remaining,
             bond.bond_duration,
             penalty_bps,
         );
-        early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &treasury);
+
+        early_exit_penalty::emit_penalty_event(
+            &e,
+            &bond.identity,
+            amount,
+            penalty_native,
+            &treasury,
+        );
 
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
-        bond.bonded_amount = bond.bonded_amount.checked_sub(amount).expect("underflow");
+        bond.bonded_amount = bond
+            .bonded_amount
+            .checked_sub(amount_normalized)
+            .expect("underflow");
         if bond.slashed_amount > bond.bonded_amount {
             Self::release_lock(&e);
             panic!("slashed exceeds bonded");
@@ -1254,7 +1255,7 @@ impl CredenceBond {
         // Update total supply after early withdrawal
         let current_total_supply = Self::get_total_supply(e.clone());
         let new_total_supply = current_total_supply
-            .checked_sub(amount)
+            .checked_sub(amount_normalized)
             .expect("total supply underflow");
         e.storage()
             .instance()
@@ -1263,7 +1264,6 @@ impl CredenceBond {
         e.storage().instance().set(&key, &bond);
 
         // Emit both old and new events for backward compatibility during migration
-        // For early withdrawal, we emit the v2 event with penalty information
         events::emit_bond_withdrawn(&e, &bond.identity, amount, bond.bonded_amount);
         events::emit_bond_withdrawn_v2(
             &e,
@@ -1272,19 +1272,21 @@ impl CredenceBond {
             bond.bonded_amount,
             e.ledger().timestamp(),
             true,
-            penalty,
+            penalty_native,
         );
 
         // Calculate net amount and transfer to user (after state updates - CEI pattern)
-        let net_amount = amount.checked_sub(penalty).expect("penalty exceeds amount");
+        let net_amount = amount
+            .checked_sub(penalty_native)
+            .expect("penalty exceeds amount");
         token_integration::transfer_from_contract(&e, &bond.identity, net_amount);
 
         // Transfer penalty to treasury (after state updates - CEI pattern)
-        if penalty > 0 {
-            token_integration::transfer_from_contract(&e, &treasury, penalty);
+        if penalty_native > 0 {
+            token_integration::transfer_from_contract(&e, &treasury, penalty_native);
 
             // Add a potential penalty refund claim (50% of penalty can be refunded for good behavior)
-            let refund_amount = penalty / 2;
+            let refund_amount = penalty_native / 2;
             if refund_amount > 0 {
                 // Get next penalty ID for tracking
                 let penalty_id = Self::get_next_penalty_id(&e);
@@ -1298,6 +1300,14 @@ impl CredenceBond {
                     Some(Symbol::new(&e, "early_exit_refund")),
                 );
             }
+        }
+
+        // Invoke callback if set (CEI: last step)
+        let cb_key = Symbol::new(&e, "callback");
+        if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
+            let fn_name = Symbol::new(&e, "on_withdraw");
+            let args: Vec<Val> = Vec::from_array(&e, [amount.into_val(&e)]);
+            e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
         }
 
         Self::release_lock(&e);
@@ -1706,15 +1716,19 @@ impl CredenceBond {
             withdrawal_requested_at: bond.withdrawal_requested_at,
             notice_period_duration: bond.notice_period_duration,
         };
+        let token = token_integration::get_token(&e);
+        let withdraw_amount_native = crate::normalization::denormalize(&e, &token, withdraw_amount);
+        token_integration::transfer_from_contract(&e, &identity, withdraw_amount_native);
+
         e.storage().instance().set(&bond_key, &updated);
         let cb_key = Symbol::new(&e, "callback");
         if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
             let fn_name = Symbol::new(&e, "on_withdraw");
-            let args: Vec<Val> = Vec::from_array(&e, [withdraw_amount.into_val(&e)]);
+            let args: Vec<Val> = Vec::from_array(&e, [withdraw_amount_native.into_val(&e)]);
             e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
         }
         Self::release_lock(&e);
-        withdraw_amount
+        withdraw_amount_native
     }
 
     pub fn slash_bond(e: Env, admin: Address, slash_amount: i128) -> i128 {
@@ -1735,6 +1749,9 @@ impl CredenceBond {
             panic!("not admin");
         }
         same_ledger_liquidation_guard::require_slash_allowed_after_collateral_increase(&e);
+        let token = token_integration::get_token(&e);
+        let slash_amount_normalized = crate::normalization::normalize(&e, &token, slash_amount);
+
         let bond_key = DataKey::Bond;
         let bond: IdentityBond = e
             .storage()
@@ -1747,7 +1764,7 @@ impl CredenceBond {
         }
         let new_slashed = bond
             .slashed_amount
-            .checked_add(slash_amount)
+            .checked_add(slash_amount_normalized)
             .expect("slashing overflow");
         if new_slashed > bond.bonded_amount {
             Self::release_lock(&e);
@@ -1772,7 +1789,7 @@ impl CredenceBond {
             e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
         }
         Self::release_lock(&e);
-        new_slashed
+        crate::normalization::denormalize(&e, &token, new_slashed)
     }
 
     pub fn collect_fees(e: Env, admin: Address) -> i128 {

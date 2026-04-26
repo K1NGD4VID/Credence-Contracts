@@ -81,8 +81,13 @@ pub fn compute_weight(e: &Env, attester: &soroban_sdk::Address) -> u32 {
     }
 
     // weight = (stake * multiplier_bps / BPS_DENOMINATOR) capped at max_weight and MAX_ATTESTATION_WEIGHT
-    let stake_u64 = stake.unsigned_abs() as u64;
-    let w = math::bps_u64(stake_u64, multiplier_bps, "attestation weight overflow") as u32;
+    let w = math::bps(
+        stake,
+        multiplier_bps,
+        "attestation weight mul overflow",
+        "attestation weight div overflow",
+    ) as u32;
     let capped = core::cmp::min(w, max_weight);
-    core::cmp::min(capped, MAX_ATTESTATION_WEIGHT).max(DEFAULT_ATTESTATION_WEIGHT)
+    core::cmp::min(capped, MAX_ATTESTATION_WEIGHT)
+        .max(DEFAULT_ATTESTATION_WEIGHT)
 }

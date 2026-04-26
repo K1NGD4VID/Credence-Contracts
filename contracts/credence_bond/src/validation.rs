@@ -41,11 +41,13 @@ pub fn validate_recipient(recipient: &Address, contract: &Address) {
     // The require_auth() calls in the calling code provide the primary validation.
 }
 
-/// Minimum bond amount accepted by the bond contract test suite.
-pub const MIN_BOND_AMOUNT: i128 = 1_000;
+/// Minimum bond amount accepted by the bond contract (normalized to 18 decimals).
+/// 1.000 tokens = 1 * 10^18
+pub const MIN_BOND_AMOUNT: i128 = 1_000_000_000_000_000_000;
 
-/// Maximum bond amount (100 million USDC with 6 decimals = 100_000_000_000_000)
-pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000; // 100M tokens (assuming 6 decimals)
+/// Maximum bond amount (100 million tokens normalized to 18 decimals)
+/// 100,000,000 * 10^18 = 10^8 * 10^18 = 10^26
+pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000_000_000_000_000;
 
 /// Validates that a bond amount is within acceptable bounds.
 ///

@@ -15,11 +15,18 @@ impl MockToken {
             .get(&Symbol::new(&e, "decimals"))
             .unwrap_or(7)
     }
-    pub fn balance(_e: Env, _id: Address) -> i128 {
-        1_000_000_000_000_000_000_000_000_i128
+    pub fn balance(e: Env, id: Address) -> i128 {
+        e.storage().persistent().get(&id).unwrap_or(1_000_000_000_000_000_000_000_000_i128)
     }
-    pub fn transfer(_e: Env, _from: Address, _to: Address, _amount: i128) {}
-    pub fn transfer_from(_e: Env, _spender: Address, _from: Address, _to: Address, _amount: i128) {}
+    pub fn transfer(e: Env, from: Address, to: Address, amount: i128) {
+        let b_from = Self::balance(e.clone(), from.clone());
+        let b_to = Self::balance(e.clone(), to.clone());
+        e.storage().persistent().set(&from, &(b_from - amount));
+        e.storage().persistent().set(&to, &(b_to + amount));
+    }
+    pub fn transfer_from(e: Env, _spender: Address, from: Address, to: Address, amount: i128) {
+        Self::transfer(e, from, to, amount);
+    }
     pub fn allowance(_e: Env, _from: Address, _spender: Address) -> i128 {
         i128::MAX
     }
