@@ -151,6 +151,66 @@ pub struct CooldownRequest {
     pub requested_at: u64,
 }
 
+#[contracttype(export = false)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DataKey {
+    Admin,
+    Bond,
+    Attester(Address),
+    Attestation(u64),
+    AttestationCounter,
+    SubjectAttestations(Address),
+    SubjectAttestationCount(Address),
+    DuplicateCheck(Address, Address, String),
+    /// Per-identity nonce for replay prevention.
+    Nonce(Address),
+    AttesterStake(Address),
+    CooldownReq(Address),
+    GovernanceNextProposalId,
+    GovernanceProposal(u64),
+    GovernanceVote(u64, Address),
+    GovernanceDelegate(Address),
+    GovernanceGovernors,
+    GovernanceQuorumBps,
+    GovernanceMinGovernors,
+    FeeTreasury,
+    FeeBps,
+    EvidenceCounter,
+    Evidence(u64),
+    ProposalEvidence(u64),
+    HashExists(String),
+    Paused,
+    PauseSigner(Address),
+    PauseSignerCount,
+    PauseThreshold,
+    PauseProposalCounter,
+    PauseProposal(u64),
+    PauseApproval(u64, Address),
+    PauseApprovalCount(u64),
+    PendingClaims(Address),
+    ClaimableAmount(Address),
+    ClaimCounter,
+    ClaimById(u64),
+    BondToken,
+    GraceWindow, // FIX 1: added for configurable post-expiry grace window
+    // Upgrade authorization storage keys
+    TotalSupply,
+    UpgradeAuth(Address),
+    AuthorizedUpgraders,
+    Implementation,
+    UpgradeAdmin,
+    PndgAdmin,
+    PndgUpgrAdmin,
+    UpgradeProposal(u64),
+    NextProposalId,
+    UpgradeHistory,
+    // Supply cap enforcement storage keys
+    SupplyCap,
+    LastCollateralIncreaseLedger,
+    // Borrow freeze
+    BorrowFrozen,
+}
+
 /// Maximum number of bonds that can be created in a single batch.
 pub const MAX_BATCH_BOND_SIZE: u32 = 100;
 
@@ -361,7 +421,11 @@ impl CredenceBond {
 
         // Always set config with requested params, but if it's the first time and enabled=true,
         // we'll set it to false first then enable it via set_enabled to trigger audit trail.
-        let effective_enabled = old_cfg.as_ref().map(|cfg| cfg.enabled).unwrap_or(false);
+        let effective_enabled = if old_cfg.is_none() {
+            false
+        } else {
+            old_cfg.as_ref().unwrap().enabled
+        };
 
         emergency::set_config(
             &e,
@@ -494,6 +558,14 @@ impl CredenceBond {
     pub fn latest_emergency_transition(e: Env) -> u64 {
         emergency::latest_transition_id(&e)
     }
+    pub fn get_emergency_transition(e: Env, id: u64) -> emergency::EmergencyModeTransition {
+        emergency::get_transition(&e, id)
+    }
+
+    pub fn latest_emergency_transition(e: Env) -> u64 {
+        emergency::latest_transition_id(&e)
+    }
+
     pub fn get_emergency_transition(e: Env, id: u64) -> emergency::EmergencyModeTransition {
         emergency::get_transition(&e, id)
     }
@@ -1176,12 +1248,7 @@ impl CredenceBond {
             0,
         );
 
-        // External call after all state updates (CEI pattern)
-        token_integration::transfer_from_contract(&e, &bond.identity, amount);
-        Self::release_lock(&e);
-
-        // INTERACTIONS: external calls after state is committed.
-        // Invoke callback so observers are notified; reentrancy is blocked by the held lock.
+        // INTERACTIONS: external calls after state is committed; reentrancy is blocked by the held lock.
         let cb_key = Symbol::new(&e, "callback");
         if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
             let fn_name = Symbol::new(&e, "on_withdraw");
@@ -1189,6 +1256,13 @@ impl CredenceBond {
             e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
         }
 
+<<<<<<< HEAD
+=======
+        // Final token transfer after all state updates and callback invocation.
+        token_integration::transfer_from_contract(&e, &bond.identity, amount);
+
+        Self::release_lock(&e);
+>>>>>>> 93d804b48add6d3c7343cc0ba506d080408523ea
         bond
     }
 

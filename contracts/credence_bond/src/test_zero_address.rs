@@ -68,8 +68,16 @@ mod zero_address_tests {
     #[test]
     fn test_register_attester_rejects_zero_address() {
         let env = Env::default();
+<<<<<<< HEAD
         let (client, admin) = setup_contract(&env);
         let zero_address = Address::generate(&env);
+=======
+        let (contract_address, admin) = setup_contract(&env);
+        let zero_address = Address::from_string(&String::from_str(
+            &env,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        ));
+>>>>>>> 93d804b48add6d3c7343cc0ba506d080408523ea
 
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             client.register_attester(&admin, &zero_address);
@@ -81,8 +89,16 @@ mod zero_address_tests {
     #[test]
     fn test_register_verifier_rejects_zero_address() {
         let env = Env::default();
+<<<<<<< HEAD
         let (client, _admin) = setup_contract(&env);
         let zero_address = Address::generate(&env);
+=======
+        let (contract_address, admin) = setup_contract(&env);
+        let zero_address = Address::from_string(&String::from_str(
+            &env,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        ));
+>>>>>>> 93d804b48add6d3c7343cc0ba506d080408523ea
 
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             client.register_verifier(&zero_address, &1000);

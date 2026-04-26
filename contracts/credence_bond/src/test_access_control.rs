@@ -15,6 +15,7 @@ use soroban_sdk::{
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 // Import main contract for testing privileged methods
+use crate::access_control::AccessError;
 use crate::{CredenceBond, CredenceBondClient};
 
 #[contract]
@@ -721,7 +722,7 @@ fn test_set_cooldown_period_unauthorized() {
 #[should_panic(expected = "InvalidAction")]
 fn test_pause_unauthorized() {
     let e = Env::default();
-    let (client, _admin, unauthorized) = setup_main_contract(&e);
+    let (client, admin, unauthorized) = setup_main_contract(&e);
 
     // This should panic with InvalidAction
     client.pause(&unauthorized);
@@ -732,7 +733,7 @@ fn test_pause_unauthorized() {
 #[should_panic(expected = "InvalidAction")]
 fn test_unpause_unauthorized() {
     let e = Env::default();
-    let (client, _admin, unauthorized) = setup_main_contract(&e);
+    let (client, admin, unauthorized) = setup_main_contract(&e);
 
     // This should panic with InvalidAction
     client.unpause(&unauthorized);
@@ -803,8 +804,8 @@ fn test_revoke_upgrade_auth_unauthorized() {
 fn test_admin_can_call_privileged_methods() {
     let e = Env::default();
     let (client, admin, _) = setup_main_contract(&e);
-    let _token = Address::generate(&e);
-    let _treasury = Address::generate(&e);
+    let token = Address::generate(&e);
+    let treasury = Address::generate(&e);
 
     // Test just a few key privileged methods that should work for admin
     // These should succeed without panicking
