@@ -385,4 +385,90 @@ mod tests {
         let owner = Address::generate(&e);
         client.create_bond(&owner, &10, &1, &false, &0);
     }
+
+    #[test]
+    fn withdraw_success() {
+        let (e, contract_id, client, owner, _admin, _attacker) = setup();
+
+        let updated = client
+            .mock_auths(&[MockAuth {
+                address: &owner,
+                invoke: &MockAuthInvoke {
+                    contract: &contract_id,
+                    fn_name: "withdraw",
+                    args: (&100_i128,).into_val(&e),
+                    sub_invokes: &[],
+                },
+            }])
+            .withdraw(&100);
+
+        assert_eq!(updated.bonded_amount, 900);
+    }
+
+    #[test]
+    fn extend_duration_success() {
+        let (e, contract_id, client, owner, _admin, _attacker) = setup();
+
+        let updated = client
+            .mock_auths(&[MockAuth {
+                address: &owner,
+                invoke: &MockAuthInvoke {
+                    contract: &contract_id,
+                    fn_name: "extend_duration",
+                    args: (&10_u64,).into_val(&e),
+                    sub_invokes: &[],
+                },
+            }])
+            .extend_duration(&10);
+
+        assert_eq!(updated.bond_duration, 1_010);
+    }
+
+    #[test]
+    fn request_withdrawal_success() {
+        let (e, contract_id, client, owner, _admin, _attacker) = setup();
+
+        client
+            .mock_auths(&[MockAuth {
+                address: &owner,
+                invoke: &MockAuthInvoke {
+                    contract: &contract_id,
+                    fn_name: "request_withdrawal",
+                    args: ().into_val(&e),
+                    sub_invokes: &[],
+                },
+            }])
+            .request_withdrawal();
+
+        let updated = client.get_identity_state();
+        assert_eq!(updated.withdrawal_requested_at, e.ledger().timestamp());
+    }
+
+    #[test]
+    fn renew_if_rolling_expired_renews() {
+        let (e, contract_id, client, owner, _admin, _attacker) = setup();
+
+        // Expire the bond by setting its start to far in the past
+        let mut bond = client.get_identity_state();
+        let now = e.ledger().timestamp();
+        bond.bond_start = now.saturating_sub(bond.bond_duration + 10);
+        e.as_contract(&contract_id, || {
+            e.storage().instance().set(&DataKey::Bond, &bond);
+        });
+
+        let updated = client
+            .mock_auths(&[MockAuth {
+                address: &owner,
+                invoke: &MockAuthInvoke {
+                    contract: &contract_id,
+                    fn_name: "renew_if_rolling",
+                    args: ().into_val(&e),
+                    sub_invokes: &[],
+                },
+            }])
+            .renew_if_rolling();
+
+        assert!(updated.bond_start >= now);
+        assert_eq!(updated.withdrawal_requested_at, 0);
+    }
 }
